@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Based Phishing Detection Infographic</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .flow-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 3rem;
+            height: 2px;
+            background-color: #94D2BD;
+        }
+        .flow-arrow::after {
+            content: '';
+            display: block;
+            width: 0;
+            height: 0;
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+            border-left: 8px solid #94D2BD;
+        }
+        @media (min-width: 768px) {
+            .flow-arrow {
+                width: 2px;
+                height: 4rem;
+            }
+            .flow-arrow::after {
+                border-left: 6px solid transparent;
+                border-right: 6px solid transparent;
+                border-top: 8px solid #94D2BD;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+
+    <main class="container mx-auto px-4 py-8 md:py-16">
+
+        <section id="header" class="text-center mb-16 md:mb-24">
+            <h1 class="text-4xl md:text-6xl font-black uppercase bg-gradient-to-r from-[#0A9396] to-[#94D2BD] text-transparent bg-clip-text">
+                AI-Powered Phishing Detection
+            </h1>
+            <p class="mt-4 text-lg md:text-xl text-gray-400 max-w-3xl mx-auto">
+                An intelligent system that proactively identifies and neutralizes malicious websites using the power of Machine Learning.
+            </p>
+        </section>
+
+        <section id="problem" class="mb-16 md:mb-24">
+            <div class="text-center bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-2xl shadow-2xl p-8">
+                <h2 class="text-3xl font-bold text-white mb-2">The Scale of the Threat</h2>
+                <p class="text-gray-400 mb-6">Phishing remains one of the most pervasive cyber threats, initiating data breaches and financial loss worldwide.</p>
+                <div class="text-6xl md:text-8xl font-extrabold text-[#EE9B00]">
+                    97.24%
+                </div>
+                <p class="text-lg text-gray-300 mt-2 font-semibold">Model Accuracy in Detecting Threats</p>
+                <p class="text-sm text-gray-500 mt-1">Our AI model correctly identifies malicious and legitimate URLs with extremely high precision.</p>
+            </div>
+        </section>
+
+        <section id="comparison" class="mb-16 md:mb-24">
+            <h2 class="text-3xl font-bold text-center mb-10">From Reactive to Predictive Defense</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-center">
+                    <h3 class="text-xl font-bold text-[#CA6702] mb-3">Blacklisting</h3>
+                    <p class="text-gray-400 text-sm">Relies on a static list of known malicious URLs. It's effective for known threats but fails against new "zero-day" attacks.</p>
+                    <div class="mt-4 font-semibold text-red-400">Reactive & Slow</div>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border-2 border-[#0A9396] text-center transform md:scale-105">
+                    <h3 class="text-xl font-bold text-[#94D2BD] mb-3">Machine Learning (Our Approach)</h3>
+                    <p class="text-gray-400 text-sm">Analyzes deep structural patterns in URLs to predict threats. It adapts and identifies new phishing sites it has never seen before.</p>
+                    <div class="mt-4 font-semibold text-green-400">Predictive & Adaptive</div>
+                </div>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 text-center">
+                    <h3 class="text-xl font-bold text-[#CA6702] mb-3">Heuristic Analysis</h3>
+                    <p class="text-gray-400 text-sm">Uses a predefined set of rules to score a URL's risk. Attackers can learn these rules and design sites to bypass them.</p>
+                    <div class="mt-4 font-semibold text-yellow-400">Easily Bypassed</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="methodology" class="mb-16 md:mb-24">
+            <h2 class="text-3xl font-bold text-center mb-10">Our System's Workflow</h2>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                <p class="text-center text-gray-400 mb-8">Our process follows a structured machine learning pipeline, from raw data to a predictive, deployable model.</p>
+                <div class="flex flex-col md:flex-row items-center justify-center gap-4 text-center">
+                    <div class="p-4 bg-gray-900 rounded-md w-40">
+                        <div class="text-3xl mb-1">📋</div>
+                        <div class="font-semibold text-sm">Dataset</div>
+                    </div>
+                    <div class="flow-arrow"></div>
+                    <div class="p-4 bg-gray-900 rounded-md w-40">
+                        <div class="text-3xl mb-1">⚙️</div>
+                        <div class="font-semibold text-sm">Feature Extraction</div>
+                    </div>
+                    <div class="flow-arrow"></div>
+                    <div class="p-4 bg-gray-900 rounded-md w-40">
+                        <div class="text-3xl mb-1">🧠</div>
+                        <div class="font-semibold text-sm">Model Training</div>
+                    </div>
+                    <div class="flow-arrow"></div>
+                    <div class="p-4 bg-gray-900 rounded-md w-40">
+                         <div class="text-3xl mb-1">📊</div>
+                        <div class="font-semibold text-sm">Evaluation</div>
+                    </div>
+                    <div class="flow-arrow"></div>
+                    <div class="p-4 bg-gray-900 rounded-md w-40">
+                         <div class="text-3xl mb-1">🛡️</div>
+                        <div class="font-semibold text-sm">Prediction</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <section id="results" class="mb-16 md:mb-24">
+            <h2 class="text-3xl font-bold text-center mb-2">Model Performance Analysis</h2>
+            <p class="text-center text-gray-400 max-w-2xl mx-auto mb-12">The model was evaluated on a test set of over 2,000 URLs it had never seen before, achieving outstanding results across all key metrics.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h3 class="text-xl font-bold text-center mb-4">Model Accuracy Breakdown</h3>
+                    <p class="text-center text-sm text-gray-400 mb-4">The donut chart visualizes the model's overall success rate, showing the small fraction of incorrect predictions versus the vast majority of correct ones.</p>
+                    <div class="chart-container">
+                        <canvas id="accuracyChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                    <h3 class="text-xl font-bold text-center mb-4">Prediction Performance Metrics</h3>
+                    <p class="text-center text-sm text-gray-400 mb-4">The radar chart compares key metrics for both classes, showing a well-balanced model that is equally strong at identifying both legitimate and phishing sites.</p>
+                    <div class="chart-container">
+                        <canvas id="metricsChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 md:col-span-2">
+                    <h3 class="text-xl font-bold text-center mb-4">Prediction Accuracy: A Deeper Look</h3>
+                     <p class="text-center text-sm text-gray-400 mb-4">This chart details the model's predictions. Each bar shows the actual class of a URL, broken down by how the model classified it, highlighting the very low error rates.</p>
+                    <div class="chart-container mx-auto" style="max-width: 800px;">
+                        <canvas id="confusionMatrixChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="future" class="text-center">
+            <h2 class="text-3xl font-bold mb-4">The Future is Proactive Security</h2>
+            <p class="text-gray-400 max-w-3xl mx-auto mb-8">This project lays the foundation for a new generation of cybersecurity tools. Future work will focus on integrating this model into real-time applications like browser extensions and email clients to provide seamless, intelligent protection for everyone.</p>
+        </section>
+
+    </main>
+
+<script>
+    (() => {
+        const wrapLabel = (label) => {
+            const maxLength = 16;
+            if (typeof label !== 'string' || label.length <= maxLength) {
+                return label;
+            }
+            const words = label.split(' ');
+            const lines = [];
+            let currentLine = '';
+            for (const word of words) {
+                if ((currentLine + ' ' + word).trim().length > maxLength) {
+                    lines.push(currentLine.trim());
+                    currentLine = word;
+                } else {
+                    currentLine = (currentLine + ' ' + word).trim();
+                }
+            }
+            if (currentLine) {
+                lines.push(currentLine.trim());
+            }
+            return lines;
+        };
+
+        const universalTooltipCallback = {
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            let label = item.chart.data.labels[item.dataIndex];
+                            if (Array.isArray(label)) {
+                                return label.join(' ');
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        };
+
+        const renderAccuracyChart = () => {
+            const ctx = document.getElementById('accuracyChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Correct Predictions', 'Incorrect Predictions'],
+                    datasets: [{
+                        data: [97.24, 2.76],
+                        backgroundColor: ['#0A9396', '#BB3E03'],
+                        borderColor: '#1f2937',
+                        borderWidth: 4,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        ...universalTooltipCallback.plugins,
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#d1d5db',
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        };
+
+        const renderMetricsChart = () => {
+            const ctx = document.getElementById('metricsChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['Precision', 'Recall', 'F1-Score'],
+                    datasets: [{
+                        label: 'Legitimate URLs',
+                        data: [0.97, 0.97, 0.97],
+                        backgroundColor: 'rgba(10, 147, 150, 0.2)',
+                        borderColor: '#0A9396',
+                        pointBackgroundColor: '#0A9396',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#0A9396'
+                    }, {
+                        label: 'Phishing URLs',
+                        data: [0.97, 0.98, 0.98],
+                        backgroundColor: 'rgba(238, 155, 0, 0.2)',
+                        borderColor: '#EE9B00',
+                        pointBackgroundColor: '#EE9B00',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#EE9B00'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    ...universalTooltipCallback,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.2)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.2)' },
+                            pointLabels: {
+                                color: '#d1d5db',
+                                font: { size: 12 }
+                            },
+                            ticks: {
+                                color: '#d1d5db',
+                                backdropColor: 'rgba(0,0,0,0.5)',
+                                stepSize: 0.05,
+                                beginAtZero: true,
+                                max: 1.0
+                            }
+                        }
+                    },
+                     plugins: {
+                         ...universalTooltipCallback.plugins,
+                         legend: {
+                            position: 'bottom',
+                             labels: {
+                                 color: '#d1d5db'
+                             }
+                         }
+                     }
+                }
+            });
+        };
+        
+        const renderConfusionMatrixChart = () => {
+            const ctx = document.getElementById('confusionMatrixChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Actual Legitimate URLs', 'Actual Phishing URLs'],
+                    datasets: [
+                        {
+                            label: 'Predicted Legitimate (Correct)',
+                            data: [967, 28],
+                            backgroundColor: '#005F73',
+                        },
+                        {
+                            label: 'Predicted Phishing (Correct)',
+                            data: [33, 1183],
+                             backgroundColor: '#0A9396',
+                        },
+                         {
+                            label: 'Predicted Phishing (Incorrect)',
+                            data: [33, 0],
+                            backgroundColor: '#AE2012',
+                        },
+                        {
+                            label: 'Predicted Legitimate (Incorrect)',
+                            data: [0, 28],
+                            backgroundColor: '#9B2226',
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    ...universalTooltipCallback,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            ticks: { color: '#d1d5db', font: {size: 14} },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: { color: '#d1d5db' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    },
+                    plugins: {
+                         ...universalTooltipCallback.plugins,
+                        legend: {
+                            position: 'bottom',
+                             labels: {
+                                 color: '#d1d5db'
+                             }
+                        }
+                    }
+                }
+            });
+        };
+
+        renderAccuracyChart();
+        renderMetricsChart();
+        renderConfusionMatrixChart();
+    })();
+</script>
+</body>
+</html>
