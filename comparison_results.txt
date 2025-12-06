@@ -1,0 +1,15 @@
+
+================================================================================
+URL                                                | Original     | Kaggle      
+================================================================================
+https://www.google.com                             | Safe         | bad         
+https://github.com                                 | Safe         | bad         
+https://stackoverflow.com                          | Safe         | bad         
+https://en.wikipedia.org/wiki/Main_Page            | Safe         | good        
+http://secure-login-apple.com                      | Safe         | bad         
+http://paypal-verification.net                     | Safe         | bad         
+http://update-your-account-now.com/login           | Safe         | bad         
+www.dghjdgf.com/paypal.co.uk/cycgi-bin/webscrcm... | Safe         | bad         
+http://192.168.1.1/admin                           | Safe         | bad         
+http://bit.ly/suspicious-link                      | Safe         | bad         
+================================================================================
