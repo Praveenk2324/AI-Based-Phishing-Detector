@@ -11,11 +11,12 @@ from utils import extract_features_from_url
 app = Flask(__name__)
 
 try:
-    url_model = joblib.load('phishing_detector_model.joblib')
-    print("URL model loaded successfully!")
+    url_model = joblib.load('url_model.joblib')
+    url_vectorizer = joblib.load('url_vectorizer.joblib')
+    print("URL model and vectorizer loaded successfully!")
 except FileNotFoundError:
-    print("Error: URL model file not found. Please run main.py first to train the model.")
-    url_model = None
+    print("Error: URL model files not found. Please run train_url_model.py first to train the model.")
+    url_model, url_vectorizer = None, None
 
 try:
     email_model = joblib.load('email_phishing_model.joblib')
@@ -57,17 +58,23 @@ def predict():
                 return jsonify({'error': 'Please provide a URL'})
             if not url.startswith(('http://', 'https://')):
                 url = 'http://' + url
-            features = extract_features_from_url(url)
+            
+            # Vectorize URL content
+            features = url_vectorizer.transform([url])
             
             # DNS failure (index 24=1) is now just a feature for the model, not a rigorous block.
             # We ONLY set is_invalid if the input is truly broken/empty (already handled) or if we want to enforce it for other reasons.
             # For this user request, we let the model decide.
             is_invalid_url = False
             
-            features_reshaped = features.reshape(1, -1)
-            prediction = url_model.predict(features_reshaped)[0]
-            probability = url_model.predict_proba(features_reshaped)[0]
-            is_phishing = bool(prediction == 1)
+            # Prediction returns class label directly (e.g., 'bad', 'good')
+            prediction = url_model.predict(features)[0]
+            probability = url_model.predict_proba(features)[0]
+            
+            # Check for specific "bad" class label. Adjust if your dataset uses different labels (e.g., 'phishing', '1', etc.)
+            # Based on 'phishing_site_urls.csv', labels are typically 'good' and 'bad'.
+            is_phishing = (prediction == 'bad')
+            
             confidence = float(max(probability) * 100)
             
             result = {
