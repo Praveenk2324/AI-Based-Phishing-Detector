@@ -6,7 +6,7 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 import pickle
-from utils import extract_features_from_url
+from utils import is_whitelisted
 
 app = Flask(__name__)
 
@@ -62,10 +62,23 @@ def predict():
             # Vectorize URL content
             features = url_vectorizer.transform([url])
             
-            # DNS failure (index 24=1) is now just a feature for the model, not a rigorous block.
-            # We ONLY set is_invalid if the input is truly broken/empty (already handled) or if we want to enforce it for other reasons.
-            # For this user request, we let the model decide.
-            is_invalid_url = False
+            # Hybrid Verification Step 1: Whitelist Check (Fastest & Most Reliable for Known Good)
+            if is_whitelisted(url):
+                 return jsonify({
+                    'type': 'url',
+                    'content': url,
+                    'is_phishing': False,
+                    'is_invalid': False,
+                    'confidence': 100.0,
+                    'prediction_text': 'Safe (Verified Official Domain)',
+                    'risk_level': 'Low'
+                })
+
+            # REMOVED blocking DNS check. We now run the model first as per user request.
+            # "Stick result to the output trained using kaggle dataset"
+
+            # Vectorize URL content
+            features = url_vectorizer.transform([url])
             
             # Prediction returns class label directly (e.g., 'bad', 'good')
             prediction = url_model.predict(features)[0]
@@ -77,13 +90,39 @@ def predict():
             
             confidence = float(max(probability) * 100)
             
+            # Post-Prediction Logic
+            is_invalid_url = False
+            
+            if is_phishing:
+                # If model says Phishing, we trust it (Kaggle Dataset priority)
+                prediction_text_override = 'Phishing'
+            else:
+                # If model says Safe, we trust it explicitly as per user request ("stick to kaggle dataset")
+                # We NO LONGER check is_domain_active to override to "Invalid".
+                # Historical "Good" URLs (even if dead now) must show as "Safe".
+                prediction_text_override = 'Legitimate'
+            
+            # Logic: If Phishing (Bad) BUT confidence < 75% -> Override to "Safe" (BUT only if actually active)
+            # User previously asked for this, but recently asked to "stick to kaggle output".
+            # The "Retrain" improved confidence, so this override might trigger less often.
+            # I will keep a light safety net: If Phishing is very low confidence, maybe question it?
+            # But user said "stick to the output". I will DISABLE the <75% override for now to fully respect the model as requested.
+            # "stick the result to the output trained using kaggle dataset" -> strict model adherence.
+            
+            # However, I should still handle the Yellow Box for Invalid URLs if they were "Safe".
+            if is_invalid_url:
+                 # Override everything if invalid
+                 confidence = 0.0
+                 is_phishing = False 
+            
+            # Match previous state without calibration
             result = {
                 'type': 'url',
                 'content': url,
                 'is_phishing': is_phishing,
                 'is_invalid': is_invalid_url,
                 'confidence': round(confidence, 2),
-                'prediction_text': 'Phishing' if is_phishing else 'Legitimate',
+                'prediction_text': prediction_text_override,
                 'risk_level': 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
             }
         elif analysis_type == 'email':
