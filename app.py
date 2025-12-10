@@ -7,6 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 import pickle
 from utils import is_whitelisted
+from email_features import extract_spambase_features
 
 app = Flask(__name__)
 
@@ -20,20 +21,23 @@ except FileNotFoundError:
 
 try:
     email_model = joblib.load('email_phishing_model.joblib')
-    email_vectorizer = joblib.load('email_vectorizer.joblib')
     print("Email model loaded successfully!")
 except FileNotFoundError:
     print("Error: Email model files not found. Please run email_trainer.py first to train the email model.")
-    email_model, email_vectorizer = None, None
+    email_model = None
 
 def analyze_email_content(email_text):
-    if email_model is None or email_vectorizer is None:
+    if email_model is None:
         return None
-    email_features = email_vectorizer.transform([email_text])
+    # Use Spambase feature extraction
+    email_features = extract_spambase_features(email_text)
+    
     prediction = email_model.predict(email_features)[0]
     probability = email_model.predict_proba(email_features)[0]
+    
     is_phishing = bool(prediction == 1)
     confidence = float(max(probability) * 100)
+    
     return {
         'is_phishing': is_phishing,
         'confidence': round(confidence, 2),
