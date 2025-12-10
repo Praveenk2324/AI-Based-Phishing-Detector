@@ -58,9 +58,11 @@ def train_email_model():
     print("\nTraining Random Forest model...")
     rf_classifier = RandomForestClassifier(
         n_estimators=100,
-        random_state=42
+        random_state=42,
+        oob_score=True
     )
     rf_classifier.fit(X_train, y_train)
+    print(f"OOB Score: {rf_classifier.oob_score_:.4f}")
     
     # Evaluate
     y_pred = rf_classifier.predict(X_test)
