@@ -1,0 +1,385 @@
+FileName: app.py
+
+from flask import Flask, render_template, request, jsonify
+import numpy as np
+import joblib
+from urllib.parse import urlparse
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import RandomForestClassifier
+import pickle
+from utils import is_whitelisted
+from email_features import extract_spambase_features
+app = Flask(__name__)
+try:
+    url_model = joblib.load('url_model.joblib')
+    url_vectorizer = joblib.load('url_vectorizer.joblib')
+    print("URL model and vectorizer loaded successfully!")
+except FileNotFoundError:
+    print("Error: URL model files not found. Please run train_url_model.py first to train the model.")
+    url_model, url_vectorizer = None, None
+try:
+    email_model = joblib.load('email_phishing_model.joblib')
+    print("Email model loaded successfully!")
+except FileNotFoundError:
+    print("Error: Email model files not found. Please run email_trainer.py first to train the email model.")
+    email_model = None
+
+
+def analyze_email_content(email_text):
+    if email_model is None:
+        return None
+    # Use Spambase feature extraction
+    email_features = extract_spambase_features(email_text)
+    prediction = email_model.predict(email_features)[0]
+    probability = email_model.predict_proba(email_features)[0]
+    is_phishing = bool(prediction == 1)
+    confidence = float(max(probability) * 100)
+    return {
+        'is_phishing': is_phishing,
+        'confidence': round(confidence, 2),
+        'prediction_text': 'Phishing' if is_phishing else 'Legitimate',
+        'risk_level': 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
+    }
+
+
+@app.route('/')
+
+
+def index():
+    return render_template('index.html')
+
+
+@app.route('/predict', methods=['POST'])
+
+
+def predict():
+    try:
+        data = request.get_json()
+        analysis_type = data.get('type', 'url')
+        if analysis_type == 'url':
+            if url_model is None:
+                return jsonify({'error': 'URL model not loaded. Please train the model first.'})
+            url = data.get('url', '').strip()
+            if not url:
+                return jsonify({'error': 'Please provide a URL'})
+            if not url.startswith(('http://', 'https://')):
+                url = 'http://' + url
+            # Vectorize URL content
+            features = url_vectorizer.transform([url])
+            if is_whitelisted(url):
+                 return jsonify({
+                    'type': 'url',
+                    'content': url,
+                    'is_phishing': False,
+                    'is_invalid': False,
+                    'confidence': 100.0,
+                    'prediction_text': 'Safe (Verified Official Domain)',
+                    'risk_level': 'Low'
+                })
+            # Vectorize URL content
+            features = url_vectorizer.transform([url])
+            prediction = url_model.predict(features)[0]
+            probability = url_model.predict_proba(features)[0]
+            is_phishing = (prediction == 'bad')
+            confidence = float(max(probability) * 100)
+            # Post-Prediction Logic
+            is_invalid_url = False
+            if is_phishing:
+                prediction_text_override = 'Phishing'
+            else:
+                prediction_text_override = 'Legitimate'
+            if is_invalid_url:
+                 # Override everything if invalid
+                 confidence = 0.0
+                 is_phishing = False 
+            # Match previous state without calibration
+            result = {
+                'type': 'url',
+                'content': url,
+                'is_phishing': is_phishing,
+                'is_invalid': is_invalid_url,
+                'confidence': round(confidence, 2),
+                'prediction_text': prediction_text_override,
+                'risk_level': 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
+            }
+        elif analysis_type == 'email':
+            if email_model is None:
+                return jsonify({'error': 'Email model not loaded.'})
+            email_text = data.get('email', '').strip()
+            if not email_text:
+                return jsonify({'error': 'Please provide email content'})
+            email_result = analyze_email_content(email_text)
+            if email_result is None:
+                return jsonify({'error': 'Error analyzing email content'})
+            result = {
+                'type': 'email',
+                'content': email_text[:100] + '...' if len(email_text) > 100 else email_text,
+                'is_phishing': email_result['is_phishing'],
+                'confidence': email_result['confidence'],
+                'prediction_text': email_result['prediction_text'],
+                'risk_level': email_result['risk_level']
+            }
+        else:
+            return jsonify({'error': 'Invalid analysis type. Use "url" or "email".'})
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': f'Error processing request: {str(e)}'})
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+----------------------------------------
+
+FileName: email_features.py
+
+import re
+import numpy as np
+# Spambase dataset attributes (57 features)
+# 48 word_freq_WORD
+MH_WORDS = [
+    "make", "address", "all", "3d", "our", "over", "remove", "internet",
+    "order", "mail", "receive", "will", "people", "report", "addresses",
+    "free", "business", "email", "you", "credit", "your", "font", "000",
+    "money", "hp", "hpl", "george", "650", "lab", "labs", "telnet", "857",
+    "data", "415", "85", "technology", "1999", "parts", "pm", "direct",
+    "cs", "meeting", "original", "project", "re", "edu", "table", "conference"
+]
+# 6 char_freq_CHAR
+MH_CHARS = [";", "(", "[", "!", "$", "#"]
+
+
+def extract_spambase_features(text):
+    if not text:
+        return np.zeros((1, 57))
+    features = []
+    # Pre-processing: tokenize for word counting
+    # This is a rough approximation.
+    words = re.split(r'[^a-zA-Z0-9]', text)
+    words = [w.lower() for w in words if w] # Filter empty strings and lowercase
+    total_words = len(words)
+    total_chars = len(text)
+    if total_words == 0:
+        features.extend([0.0] * 48)
+    else:
+        # 1-48: Word frequencies
+        for target_word in MH_WORDS:
+            count = words.count(target_word)
+            freq = 100.0 * count / total_words
+            features.append(freq)
+    # 49-54: Character frequencies
+    if total_chars == 0:
+        features.extend([0.0] * 6)
+    else:
+        for target_char in MH_CHARS:
+            count = text.count(target_char)
+            freq = 100.0 * count / total_chars
+            features.append(freq)
+    # Capital run length statistics
+    # 55: capital_run_length_average
+    # 56: capital_run_length_longest
+    # 57: capital_run_length_total
+    cap_runs = re.findall(r'[A-Z]+', text)
+    if not cap_runs:
+        features.extend([0.0, 0.0, 0.0])
+    else:
+        run_lengths = [len(run) for run in cap_runs]
+        run_avg = sum(run_lengths) / len(run_lengths)
+        run_max = max(run_lengths)
+        run_total = sum(run_lengths)
+        features.append(run_avg)
+        features.append(run_max)
+        features.append(run_total)
+    return np.array([features])
+
+----------------------------------------
+
+FileName: email_trainer.py
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+import joblib
+import os
+import requests
+from email_features import extract_spambase_features
+
+
+def download_spambase_if_needed():
+    file_path = 'spambase.data'
+    if os.path.exists(file_path):
+        print(f"Found {file_path}")
+        return True
+    print("spambase.data not found locally. Attempting to download...")
+    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data"
+    try:
+        response = requests.get(url)
+        with open(file_path, 'wb') as f:
+            f.write(response.content)
+        print("Downloaded spambase.data")
+        return True
+    except Exception as e:
+        print(f"Failed to download spambase.data: {e}")
+        return False
+
+
+def train_email_model():
+    print("=== Email Phishing Detection Model Training (UCI Spambase) ===")
+    if not download_spambase_if_needed():
+        print("Cannot proceed without dataset.")
+        return
+    # Load dataset
+    try:
+        data = pd.read_csv('spambase.data', header=None)
+        print(f"Loaded dataset with shape: {data.shape}")
+    except Exception as e:
+        print(f"Error loading CSV: {e}")
+        return
+    X = data.iloc[:, :-1]
+    y = data.iloc[:, -1]
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    print(f"Training set: {X_train.shape}")
+    print(f"Testing set: {X_test.shape}")
+    # Train Random Forest
+    print("\nTraining Random Forest model...")
+    rf_classifier = RandomForestClassifier(
+        n_estimators=100,
+        random_state=42,
+        oob_score=True
+    )
+    rf_classifier.fit(X_train, y_train)
+    print(f"OOB Score: {rf_classifier.oob_score_:.4f}")
+    # Evaluate
+    y_pred = rf_classifier.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Model Accuracy: {accuracy:.4f}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Spam/Phishing']))
+    # Save model
+    model_filename = 'email_phishing_model.joblib'
+    joblib.dump(rf_classifier, model_filename)
+    print(f"Model saved to {model_filename}")
+    # Test with a few examples
+    print("\n=== Testing with Sample Texts ===")
+    examples = [
+        "Urgent! You have won a lottery. Click here to claim your prize money now! 000000",
+        "Refinance your home today! Free quote. Best interest rates available. Apply now.",
+        "Hi Bob, just checking in on the project status. Let's meet tomorrow."
+    ]
+    for text in examples:
+        features = extract_spambase_features(text)
+        prediction = rf_classifier.predict(features)[0]
+        prob = rf_classifier.predict_proba(features)[0]
+        confidence = max(prob) * 100
+        label = "Phishing/Spam" if prediction == 1 else "Legitimate"
+        print(f"Text: '{text[:50]}...' -> {label} (Conf: {confidence:.2f}%)")
+
+
+if __name__ == "__main__":
+    train_email_model()
+
+----------------------------------------
+
+FileName: train_url_model.py
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+import joblib
+import os
+
+
+def train_url_model():
+    print("Loading dataset...")
+    try:
+        df = pd.read_csv("phishing_site_urls.csv")
+    except FileNotFoundError:
+        print("Error: phishing_site_urls.csv not found.")
+        return
+    print(f"Dataset Shape: {df.shape}")
+    print(f"Columns: {df.columns.tolist()}")
+    if 'URL' in df.columns and 'Label' in df.columns:
+        X = df['URL']
+        y = df['Label']
+    else:
+        print("Unexpected column names. Expecting 'URL' and 'Label'.")
+        # Try to find them dynamically
+        url_col = next((col for col in df.columns if 'url' in col.lower()), None)
+        label_col = next((col for col in df.columns if 'label' in col.lower() or 'type' in col.lower()), None)
+        if url_col and label_col:
+            X = df[url_col]
+            y = df[label_col]
+        else:
+            print("Could not identify URL and Label columns.")
+            return
+    print("Splitting data...")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    print("Vectorizing URLs (Character-level TF-IDF)...")
+    vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(3, 5), max_features=100000)
+    X_train_tfidf = vectorizer.fit_transform(X_train)
+    X_test_tfidf = vectorizer.transform(X_test)
+    print("Training Logistic Regression Model...")
+    model = LogisticRegression(C=10.0, max_iter=1000, n_jobs=-1)
+    model.fit(X_train_tfidf, y_train)
+    print("Evaluating Model...")
+    y_pred = model.predict(X_test_tfidf)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy:.4f}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred))
+    print("Saving model and vectorizer...")
+    joblib.dump(model, 'url_model.joblib')
+    joblib.dump(vectorizer, 'url_vectorizer.joblib')
+    print("Saved 'url_model.joblib' and 'url_vectorizer.joblib' successfully.")
+
+
+if __name__ == "__main__":
+    train_url_model()
+
+----------------------------------------
+
+FileName: utils.py
+
+from urllib.parse import urlparse
+
+
+def get_whitelisted_domains():
+    return {
+        'google.com', 'www.google.com', 'youtube.com', 'www.youtube.com',
+        'facebook.com', 'www.facebook.com', 'amazon.com', 'www.amazon.com',
+        'wikipedia.org', 'www.wikipedia.org', 'instagram.com', 'www.instagram.com',
+        'twitter.com', 'www.twitter.com', 'linkedin.com', 'www.linkedin.com',
+        'reddit.com', 'www.reddit.com', 'netflix.com', 'www.netflix.com',
+        'microsoft.com', 'www.microsoft.com', 'apple.com', 'www.apple.com',
+        'yahoo.com', 'www.yahoo.com', 'bing.com', 'www.bing.com',
+        'github.com', 'www.github.com', 'stackoverflow.com', 'gmail.com'
+    }
+
+
+def is_whitelisted(url):
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.netloc
+        if not hostname:
+             path = parsed.path
+             if '/' in path:
+                 hostname = path.split('/')[0]
+             else:
+                 hostname = path
+        # Remove port
+        if ':' in hostname:
+            hostname = hostname.split(':')[0]
+        return hostname.lower() in get_whitelisted_domains()
+    except:
+        return False
+
+----------------------------------------
