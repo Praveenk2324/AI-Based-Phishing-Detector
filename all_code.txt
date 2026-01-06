@@ -1,4 +1,5 @@
-FileName: app.py
+
+==================== app.py ====================
 
 from flask import Flask, render_template, request, jsonify
 import numpy as np
@@ -10,7 +11,9 @@ from sklearn.ensemble import RandomForestClassifier
 import pickle
 from utils import is_whitelisted
 from email_features import extract_spambase_features
+
 app = Flask(__name__)
+
 try:
     url_model = joblib.load('url_model.joblib')
     url_vectorizer = joblib.load('url_vectorizer.joblib')
@@ -18,6 +21,7 @@ try:
 except FileNotFoundError:
     print("Error: URL model files not found. Please run train_url_model.py first to train the model.")
     url_model, url_vectorizer = None, None
+
 try:
     email_model = joblib.load('email_phishing_model.joblib')
     print("Email model loaded successfully!")
@@ -25,16 +29,18 @@ except FileNotFoundError:
     print("Error: Email model files not found. Please run email_trainer.py first to train the email model.")
     email_model = None
 
-
 def analyze_email_content(email_text):
     if email_model is None:
         return None
     # Use Spambase feature extraction
     email_features = extract_spambase_features(email_text)
+    
     prediction = email_model.predict(email_features)[0]
     probability = email_model.predict_proba(email_features)[0]
+    
     is_phishing = bool(prediction == 1)
     confidence = float(max(probability) * 100)
+    
     return {
         'is_phishing': is_phishing,
         'confidence': round(confidence, 2),
@@ -42,11 +48,9 @@ def analyze_email_content(email_text):
         'risk_level': 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
     }
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -61,8 +65,11 @@ def predict():
                 return jsonify({'error': 'Please provide a URL'})
             if not url.startswith(('http://', 'https://')):
                 url = 'http://' + url
+            
             # Vectorize URL content
             features = url_vectorizer.transform([url])
+            
+            # Hybrid Verification Step 1: Whitelist Check (Fastest & Most Reliable for Known Good)
             if is_whitelisted(url):
                  return jsonify({
                     'type': 'url',
@@ -73,22 +80,48 @@ def predict():
                     'prediction_text': 'Safe (Verified Official Domain)',
                     'risk_level': 'Low'
                 })
+
+            # REMOVED blocking DNS check. We now run the model first as per user request.
+            # "Stick result to the output trained using kaggle dataset"
+
             # Vectorize URL content
             features = url_vectorizer.transform([url])
+            
+            # Prediction returns class label directly (e.g., 'bad', 'good')
             prediction = url_model.predict(features)[0]
             probability = url_model.predict_proba(features)[0]
+            
+            # Check for specific "bad" class label. Adjust if your dataset uses different labels (e.g., 'phishing', '1', etc.)
+            # Based on 'phishing_site_urls.csv', labels are typically 'good' and 'bad'.
             is_phishing = (prediction == 'bad')
+            
             confidence = float(max(probability) * 100)
+            
             # Post-Prediction Logic
             is_invalid_url = False
+            
             if is_phishing:
+                # If model says Phishing, we trust it (Kaggle Dataset priority)
                 prediction_text_override = 'Phishing'
             else:
+                # If model says Safe, we trust it explicitly as per user request ("stick to kaggle dataset")
+                # We NO LONGER check is_domain_active to override to "Invalid".
+                # Historical "Good" URLs (even if dead now) must show as "Safe".
                 prediction_text_override = 'Legitimate'
+            
+            # Logic: If Phishing (Bad) BUT confidence < 75% -> Override to "Safe" (BUT only if actually active)
+            # User previously asked for this, but recently asked to "stick to kaggle output".
+            # The "Retrain" improved confidence, so this override might trigger less often.
+            # I will keep a light safety net: If Phishing is very low confidence, maybe question it?
+            # But user said "stick to the output". I will DISABLE the <75% override for now to fully respect the model as requested.
+            # "stick the result to the output trained using kaggle dataset" -> strict model adherence.
+            
+            # However, I should still handle the Yellow Box for Invalid URLs if they were "Safe".
             if is_invalid_url:
                  # Override everything if invalid
                  confidence = 0.0
                  is_phishing = False 
+            
             # Match previous state without calibration
             result = {
                 'type': 'url',
@@ -122,16 +155,55 @@ def predict():
     except Exception as e:
         return jsonify({'error': f'Error processing request: {str(e)}'})
 
-
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 
-----------------------------------------
+==================== utils.py ====================
 
-FileName: email_features.py
+from urllib.parse import urlparse
+
+# Moved extract_features_from_url to legacy_v1/legacy_utils.py
+# Moved is_domain_active to legacy_v1/legacy_utils.py
+
+def get_whitelisted_domains():
+    """
+    Returns a set of popular legitimate domains to strictly prevent false positives.
+    """
+    return {
+        'google.com', 'www.google.com', 'youtube.com', 'www.youtube.com',
+        'facebook.com', 'www.facebook.com', 'amazon.com', 'www.amazon.com',
+        'wikipedia.org', 'www.wikipedia.org', 'instagram.com', 'www.instagram.com',
+        'twitter.com', 'www.twitter.com', 'linkedin.com', 'www.linkedin.com',
+        'reddit.com', 'www.reddit.com', 'netflix.com', 'www.netflix.com',
+        'microsoft.com', 'www.microsoft.com', 'apple.com', 'www.apple.com',
+        'yahoo.com', 'www.yahoo.com', 'bing.com', 'www.bing.com',
+        'github.com', 'www.github.com', 'stackoverflow.com', 'gmail.com'
+    }
+
+def is_whitelisted(url):
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.netloc
+        if not hostname:
+             path = parsed.path
+             if '/' in path:
+                 hostname = path.split('/')[0]
+             else:
+                 hostname = path
+        
+        # Remove port
+        if ':' in hostname:
+            hostname = hostname.split(':')[0]
+            
+        return hostname.lower() in get_whitelisted_domains()
+    except:
+        return False
+
+==================== email_features.py ====================
 
 import re
 import numpy as np
+
 # Spambase dataset attributes (57 features)
 # 48 word_freq_WORD
 MH_WORDS = [
@@ -142,21 +214,40 @@ MH_WORDS = [
     "data", "415", "85", "technology", "1999", "parts", "pm", "direct",
     "cs", "meeting", "original", "project", "re", "edu", "table", "conference"
 ]
+
 # 6 char_freq_CHAR
 MH_CHARS = [";", "(", "[", "!", "$", "#"]
 
-
 def extract_spambase_features(text):
+    """
+    Extracts the 57 features required for the Spambase model from raw email text.
+    
+    Args:
+        text (str): The raw email text.
+        
+    Returns:
+        numpy.ndarray: A 1x57 arrays of features.
+    """
     if not text:
         return np.zeros((1, 57))
+        
     features = []
+    
     # Pre-processing: tokenize for word counting
+    # We'll use a simple regex for tokenization similar to what might have been used
+    # Note: Spambase documentation says "continuous real [0,100] attributes of type word_freq_WORD"
+    # = percentage of words in the e-mail that match WORD
+    
+    # Split by non-alphanumeric characters to get words
     # This is a rough approximation.
     words = re.split(r'[^a-zA-Z0-9]', text)
     words = [w.lower() for w in words if w] # Filter empty strings and lowercase
+    
     total_words = len(words)
     total_chars = len(text)
+    
     if total_words == 0:
+         # If no words, word freqs are 0
         features.extend([0.0] * 48)
     else:
         # 1-48: Word frequencies
@@ -164,7 +255,9 @@ def extract_spambase_features(text):
             count = words.count(target_word)
             freq = 100.0 * count / total_words
             features.append(freq)
+            
     # 49-54: Character frequencies
+    # percentage of characters in the e-mail that match CHAR
     if total_chars == 0:
         features.extend([0.0] * 6)
     else:
@@ -172,26 +265,105 @@ def extract_spambase_features(text):
             count = text.count(target_char)
             freq = 100.0 * count / total_chars
             features.append(freq)
+            
     # Capital run length statistics
     # 55: capital_run_length_average
     # 56: capital_run_length_longest
     # 57: capital_run_length_total
+    
+    # Find all sequences of capital letters
     cap_runs = re.findall(r'[A-Z]+', text)
+    
     if not cap_runs:
         features.extend([0.0, 0.0, 0.0])
     else:
         run_lengths = [len(run) for run in cap_runs]
+        
         run_avg = sum(run_lengths) / len(run_lengths)
         run_max = max(run_lengths)
         run_total = sum(run_lengths)
+        
         features.append(run_avg)
         features.append(run_max)
         features.append(run_total)
+        
     return np.array([features])
 
-----------------------------------------
+==================== train_url_model.py ====================
 
-FileName: email_trainer.py
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+import joblib
+import os
+
+def train_url_model():
+    print("Loading dataset...")
+    # Using 'error_bad_lines=False' or 'on_bad_lines=skip' depending on pandas version if there are issues, 
+    # but for now standard read should work if file is clean.
+    try:
+        df = pd.read_csv("phishing_site_urls.csv")
+    except FileNotFoundError:
+        print("Error: phishing_site_urls.csv not found.")
+        return
+
+    print(f"Dataset Shape: {df.shape}")
+    print(f"Columns: {df.columns.tolist()}")
+
+    # Identify columns (assuming standard format or derived from previous knowledge)
+    # The dataset usually has 'URL' and 'Label'
+    if 'URL' in df.columns and 'Label' in df.columns:
+        X = df['URL']
+        y = df['Label']
+    else:
+        # Fallback or error if columns don't match expectation
+        print("Unexpected column names. Expecting 'URL' and 'Label'.")
+        # Try to find them dynamically
+        url_col = next((col for col in df.columns if 'url' in col.lower()), None)
+        label_col = next((col for col in df.columns if 'label' in col.lower() or 'type' in col.lower()), None)
+        
+        if url_col and label_col:
+            X = df[url_col]
+            y = df[label_col]
+        else:
+            print("Could not identify URL and Label columns.")
+            return
+
+    print("Splitting data...")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    print("Vectorizing URLs (Character-level TF-IDF)...")
+    # Using character-level analyzer to capture sub-token patterns
+    # Increased max_features to 100,000 for better granularity
+    vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(3, 5), max_features=100000)
+    X_train_tfidf = vectorizer.fit_transform(X_train)
+    X_test_tfidf = vectorizer.transform(X_test)
+
+    print("Training Logistic Regression Model...")
+    # Logistic Regression is generally very effective for this high-dimensional sparse data
+    # C=10.0 reduces regularization, allowing the model to fit tighter and be more "confident"
+    model = LogisticRegression(C=10.0, max_iter=1000, n_jobs=-1)
+    model.fit(X_train_tfidf, y_train)
+
+    print("Evaluating Model...")
+    y_pred = model.predict(X_test_tfidf)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy:.4f}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred))
+
+    print("Saving model and vectorizer...")
+    joblib.dump(model, 'url_model.joblib')
+    joblib.dump(vectorizer, 'url_vectorizer.joblib')
+    print("Saved 'url_model.joblib' and 'url_vectorizer.joblib' successfully.")
+
+if __name__ == "__main__":
+    train_url_model()
+
+==================== email_trainer.py ====================
 
 import pandas as pd
 import numpy as np
@@ -203,12 +375,13 @@ import os
 import requests
 from email_features import extract_spambase_features
 
-
 def download_spambase_if_needed():
+    """Checks for spambase.data and downloads if missing (though it should be local as per user info)"""
     file_path = 'spambase.data'
     if os.path.exists(file_path):
         print(f"Found {file_path}")
         return True
+    
     print("spambase.data not found locally. Attempting to download...")
     url = "https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data"
     try:
@@ -221,27 +394,33 @@ def download_spambase_if_needed():
         print(f"Failed to download spambase.data: {e}")
         return False
 
-
 def train_email_model():
     print("=== Email Phishing Detection Model Training (UCI Spambase) ===")
+    
     if not download_spambase_if_needed():
         print("Cannot proceed without dataset.")
         return
+
     # Load dataset
+    # The dataset has 57 features + 1 label (last column)
     try:
         data = pd.read_csv('spambase.data', header=None)
         print(f"Loaded dataset with shape: {data.shape}")
     except Exception as e:
         print(f"Error loading CSV: {e}")
         return
+
     X = data.iloc[:, :-1]
     y = data.iloc[:, -1]
+    
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
+    
     print(f"Training set: {X_train.shape}")
     print(f"Testing set: {X_test.shape}")
+    
     # Train Random Forest
     print("\nTraining Random Forest model...")
     rf_classifier = RandomForestClassifier(
@@ -251,16 +430,22 @@ def train_email_model():
     )
     rf_classifier.fit(X_train, y_train)
     print(f"OOB Score: {rf_classifier.oob_score_:.4f}")
+    
     # Evaluate
     y_pred = rf_classifier.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     print(f"Model Accuracy: {accuracy:.4f}")
+    
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Spam/Phishing']))
+    
     # Save model
     model_filename = 'email_phishing_model.joblib'
     joblib.dump(rf_classifier, model_filename)
     print(f"Model saved to {model_filename}")
+    
+    # Note: We don't need to save a vectorizer because we are using a fixed feature extractor code.
+
     # Test with a few examples
     print("\n=== Testing with Sample Texts ===")
     examples = [
@@ -268,114 +453,706 @@ def train_email_model():
         "Refinance your home today! Free quote. Best interest rates available. Apply now.",
         "Hi Bob, just checking in on the project status. Let's meet tomorrow."
     ]
+    
     for text in examples:
         features = extract_spambase_features(text)
         prediction = rf_classifier.predict(features)[0]
         prob = rf_classifier.predict_proba(features)[0]
         confidence = max(prob) * 100
+        
         label = "Phishing/Spam" if prediction == 1 else "Legitimate"
         print(f"Text: '{text[:50]}...' -> {label} (Conf: {confidence:.2f}%)")
-
 
 if __name__ == "__main__":
     train_email_model()
 
-----------------------------------------
 
-FileName: train_url_model.py
+==================== static\style.css ====================
 
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
-import joblib
-import os
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
 
-def train_url_model():
-    print("Loading dataset...")
-    try:
-        df = pd.read_csv("phishing_site_urls.csv")
-    except FileNotFoundError:
-        print("Error: phishing_site_urls.csv not found.")
-        return
-    print(f"Dataset Shape: {df.shape}")
-    print(f"Columns: {df.columns.tolist()}")
-    if 'URL' in df.columns and 'Label' in df.columns:
-        X = df['URL']
-        y = df['Label']
-    else:
-        print("Unexpected column names. Expecting 'URL' and 'Label'.")
-        # Try to find them dynamically
-        url_col = next((col for col in df.columns if 'url' in col.lower()), None)
-        label_col = next((col for col in df.columns if 'label' in col.lower() or 'type' in col.lower()), None)
-        if url_col and label_col:
-            X = df[url_col]
-            y = df[label_col]
-        else:
-            print("Could not identify URL and Label columns.")
-            return
-    print("Splitting data...")
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    print("Vectorizing URLs (Character-level TF-IDF)...")
-    vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(3, 5), max_features=100000)
-    X_train_tfidf = vectorizer.fit_transform(X_train)
-    X_test_tfidf = vectorizer.transform(X_test)
-    print("Training Logistic Regression Model...")
-    model = LogisticRegression(C=10.0, max_iter=1000, n_jobs=-1)
-    model.fit(X_train_tfidf, y_train)
-    print("Evaluating Model...")
-    y_pred = model.predict(X_test_tfidf)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
-    print("Saving model and vectorizer...")
-    joblib.dump(model, 'url_model.joblib')
-    joblib.dump(vectorizer, 'url_vectorizer.joblib')
-    print("Saved 'url_model.joblib' and 'url_vectorizer.joblib' successfully.")
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
 
+        .header {
+            margin-bottom: 30px;
+        }
 
-if __name__ == "__main__":
-    train_url_model()
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
 
-----------------------------------------
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
 
-FileName: utils.py
+        .icon {
+            font-size: 3em;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
 
-from urllib.parse import urlparse
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
 
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
 
-def get_whitelisted_domains():
-    return {
-        'google.com', 'www.google.com', 'youtube.com', 'www.youtube.com',
-        'facebook.com', 'www.facebook.com', 'amazon.com', 'www.amazon.com',
-        'wikipedia.org', 'www.wikipedia.org', 'instagram.com', 'www.instagram.com',
-        'twitter.com', 'www.twitter.com', 'linkedin.com', 'www.linkedin.com',
-        'reddit.com', 'www.reddit.com', 'netflix.com', 'www.netflix.com',
-        'microsoft.com', 'www.microsoft.com', 'apple.com', 'www.apple.com',
-        'yahoo.com', 'www.yahoo.com', 'bing.com', 'www.bing.com',
-        'github.com', 'www.github.com', 'stackoverflow.com', 'gmail.com'
-    }
+        .input-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
 
+        .input-container i {
+            position: absolute;
+            left: 15px;
+            color: #999;
+            font-size: 1.2em;
+            z-index: 1;
+        }
 
-def is_whitelisted(url):
-    try:
-        parsed = urlparse(url)
-        hostname = parsed.netloc
-        if not hostname:
-             path = parsed.path
-             if '/' in path:
-                 hostname = path.split('/')[0]
-             else:
-                 hostname = path
-        # Remove port
-        if ':' in hostname:
-            hostname = hostname.split(':')[0]
-        return hostname.lower() in get_whitelisted_domains()
-    except:
-        return False
+        input[type="url"],
+        input[type="text"] {
+            width: 100%;
+            padding: 15px 15px 15px 50px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
 
-----------------------------------------
+        input[type="url"]:focus,
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 5px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .analysis-form {
+            display: none;
+        }
+
+        .analysis-form.active {
+            display: block;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 15px 15px 15px 50px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 120px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 15px;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result.safe {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+
+        .result.phishing {
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            color: white;
+        }
+
+        .result.warning {
+            background: linear-gradient(135deg, #f6e05e 0%, #d69e2e 100%);
+            color: #333;
+        }
+
+        .result.possible_phishing {
+            background: linear-gradient(135deg, #ff6700 0%, #ff8533 100%);
+            color: white;
+        }
+
+        .result.invalid {
+            background: linear-gradient(135deg, #ffcc00 0%, #ffdb4d 100%);
+            /* Yellow/Orange */
+            color: #333;
+        }
+
+        .result-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .result-title {
+            font-size: 1.8em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .result-details {
+            font-size: 1.1em;
+            margin-bottom: 15px;
+        }
+
+        .confidence-bar {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            height: 20px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+
+        .examples {
+            margin-top: 40px;
+            text-align: left;
+        }
+
+        .examples h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .example-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 8px 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .example-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .example-item i {
+            margin-right: 10px;
+            width: 20px;
+        }
+
+        .example-item.safe i {
+            color: #28a745;
+        }
+
+        .example-item.phishing i {
+            color: #dc3545;
+        }
+
+        .example-section {
+            margin-bottom: 20px;
+        }
+
+        .example-section h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+
+==================== templates\index.html ====================
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing Detector</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <h1>Phishing Detector</h1>
+            <p>Analyze URLs and emails to detect phishing attempts. Our AI-powered system uses machine learning to
+                identify malicious content and protect you from cyber threats.</p>
+        </div>
+
+        <!-- Analysis Type Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="url">
+                <i class="fas fa-link"></i> URL Analysis
+            </button>
+            <button class="tab-btn" data-tab="email">
+                <i class="fas fa-envelope"></i> Email Analysis
+            </button>
+        </div>
+
+        <!-- URL Analysis Form -->
+        <form id="urlForm" class="analysis-form active">
+            <div class="form-group">
+                <label for="urlInput">Enter URL to analyze:</label>
+                <div class="input-container">
+                    <i class="fas fa-link"></i>
+                    <input type="text" id="urlInput" placeholder="Please enter a valid URL (e.g., google.com)" required>
+                </div>
+            </div>
+            <button type="submit" class="btn" id="submitBtn">
+                <i class="fas fa-search"></i> Analyze URL
+            </button>
+        </form>
+
+        <!-- Email Analysis Form -->
+        <form id="emailForm" class="analysis-form">
+            <div class="form-group">
+                <label for="emailInput">Enter email content to analyze:</label>
+                <div class="input-container">
+                    <i class="fas fa-envelope"></i>
+                    <textarea id="emailInput"
+                        placeholder="Subject: Urgent Action Required&#10;&#10;Dear User,&#10;&#10;Your account has been suspended due to suspicious activity. Please click the link below to verify your account immediately.&#10;&#10;Click here: http://verify-account.com&#10;&#10;Best regards,&#10;Security Team"
+                        rows="8" required></textarea>
+                </div>
+            </div>
+            <button type="submit" class="btn" id="emailSubmitBtn">
+                <i class="fas fa-search"></i> Analyze Email
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing URL...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="result" id="result">
+            <div class="result-icon" id="resultIcon"></div>
+            <div class="result-title" id="resultTitle"></div>
+            <div class="result-details" id="resultDetails"></div>
+            <div class="confidence-bar">
+                <div class="confidence-fill" id="confidenceFill"></div>
+            </div>
+            <div id="confidenceText"></div>
+        </div>
+
+        <div class="examples">
+            <h3><i class="fas fa-lightbulb"></i> Try these examples:</h3>
+
+            <div class="example-section">
+                <h4><i class="fas fa-link"></i> URL Examples:</h4>
+                <div class="example-item safe" onclick="analyzeExample('https://www.google.com', 'url')">
+                    <i class="fas fa-check-circle"></i>
+                    <span>https://www.google.com (Safe)</span>
+                </div>
+                <div class="example-item phishing" onclick="analyzeExample('http://bit.ly/suspicious-link', 'url')">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>http://bit.ly/suspicious-link (Suspicious)</span>
+                </div>
+                <div class="example-item phishing" onclick="analyzeExample('http://182.121.11.23/login', 'url')">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>http://182.121.11.23/login (Suspicious)</span>
+                </div>
+            </div>
+
+            <div class="example-section">
+                <h4><i class="fas fa-envelope"></i> Email Examples:</h4>
+                <div class="example-item phishing"
+                    onclick="analyzeExample('Subject: FREE MONEY!!! 000 000 000\n\nFREE FREE FREE!!!!\nYou have won $10000000 money!\n\nClick here to receive your credit and money order!\nBusiness email list for sale.\nInternet offer! order now!\n\nMake money! credit! free!', 'email')">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Free Money Offer (Phishing)</span>
+                </div>
+                <div class="example-item phishing"
+                    onclick="analyzeExample('Subject: Refinance Today\n\nLowest rates in history! Get approved instantly. No credit check required. Click here to claim your offer now!\n\nApply: http://fast-loans-now.com', 'email')">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Refinance Offer (Phishing)</span>
+                </div>
+                <div class="example-item safe"
+                    onclick="analyzeExample('Subject: Monthly Newsletter\n\nHello,\n\nThank you for subscribing to our newsletter. Here are this month\'s updates and product announcements.\n\nBest regards,\nMarketing Team', 'email')">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Monthly Newsletter (Safe)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab functionality
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const tab = this.dataset.tab;
+
+                // Update tab buttons
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                // Update forms
+                document.querySelectorAll('.analysis-form').forEach(form => form.classList.remove('active'));
+                document.getElementById(tab + 'Form').classList.add('active');
+
+                // Update loading text
+                const loadingText = document.querySelector('#loading p');
+                loadingText.textContent = tab === 'url' ? 'Analyzing URL...' : 'Analyzing Email...';
+            });
+        });
+
+        // URL form submission
+        document.getElementById('urlForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            await analyzeContent('url');
+        });
+
+        // Email form submission
+        document.getElementById('emailForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            await analyzeContent('email');
+        });
+
+        async function analyzeContent(type) {
+            const inputElement = document.getElementById(type === 'url' ? 'urlInput' : 'emailInput');
+            const submitBtn = document.getElementById(type === 'url' ? 'submitBtn' : 'emailSubmitBtn');
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const error = document.getElementById('error');
+
+            // Clear any previous error styling
+            inputElement.style.color = '';
+            inputElement.style.borderColor = '';
+            error.style.display = 'none';
+
+            const content = inputElement.value.trim();
+
+            if (!content) {
+                // showError(`Please enter ${type === 'url' ? 'a URL' : 'email content'}`);
+                showResult({
+                    type: type,
+                    is_invalid: true,
+                    message: `Please enter ${type === 'url' ? 'a URL' : 'email content'}`
+                });
+                return;
+            }
+
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            error.style.display = 'none';
+
+            try {
+                const requestData = {
+                    type: type,
+                    [type]: content
+                };
+
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    showResult(data);
+                }
+            } catch (err) {
+                showError('Network error. Please try again.');
+            } finally {
+                // Reset button state
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<i class="fas fa-search"></i> Analyze ${type === 'url' ? 'URL' : 'Email'}`;
+                loading.style.display = 'none';
+            }
+        }
+
+        function showResult(data) {
+            const result = document.getElementById('result');
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultDetails = document.getElementById('resultDetails');
+            const confidenceFill = document.getElementById('confidenceFill');
+            const confidenceText = document.getElementById('confidenceText');
+
+            // Determine content type for display
+            const contentType = data.type === 'email' ? 'email' : 'URL';
+
+            // 1. Invalid / Inactive Domain
+            if (data.is_invalid) {
+                result.className = 'result invalid'; // Use new Yellow/Orange class
+                // Use backend prediction text "Invalid URL or Domain Unreachable"
+                resultTitle.textContent = data.prediction_text || '⚠️ Invalid URL';
+                resultIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+                resultDetails.textContent = `The domain appears to be inactive or invalid. Please check the URL.`;
+                confidenceFill.style.width = '0%';
+                confidenceFill.style.backgroundColor = '#ffcc00'; // Yellow/Orange
+                confidenceText.textContent = 'Confidence: N/A';
+                result.style.display = 'block';
+                return;
+            }
+
+            // 2. Possible Phishing (Email only, Confidence < 70% - Applies to BOTH Safe and Phishing predictions)
+            // If the model is not confident enough (even if it says Safe), we warn the user.
+            const confidence = data.confidence || 0;
+            if (data.type === 'email' && confidence < 70) {
+                result.className = 'result possible_phishing';
+                resultIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+                resultTitle.textContent = '⚠️ Possible Phishing Detected';
+                resultDetails.textContent = `The detection confidence is low (${confidence}%). Risk Level: Medium`;
+                confidenceFill.style.backgroundColor = '#ff6700';
+            }
+            // 3. Phishing (High Confidence or URL)
+            else if (data.is_phishing) {
+                result.className = 'result phishing';
+                resultIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+                resultTitle.textContent = data.prediction_text || '⚠️ Phishing Detected!';
+                resultDetails.textContent = `This ${contentType} appears to be malicious. Risk Level: ${data.risk_level}`;
+                confidenceFill.style.backgroundColor = '#ff416c'; // Red
+            }
+            // 4. Safe (High Confidence)
+            else {
+                result.className = 'result safe';
+                resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
+                confidenceFill.style.backgroundColor = '#56ab2f'; // Green
+
+                // Use backend text which might be "Safe (Low Confidence Phishing Prediction)"
+                resultTitle.textContent = data.prediction_text || `✅ Safe ${contentType.charAt(0).toUpperCase() + contentType.slice(1)}`;
+                resultDetails.textContent = `This ${contentType} appears to be legitimate. Risk Level: ${data.risk_level}`;
+            }
+
+            // Set confidence bar
+            // Ensure confidence is a number
+            const conf = data.confidence || 0;
+            confidenceFill.style.width = `${conf}%`;
+            confidenceText.textContent = `Confidence: ${conf}%`;
+
+            result.style.display = 'block';
+        }
+
+        function showError(message) {
+            const activeForm = document.querySelector('.analysis-form.active');
+            const inputElement = activeForm.querySelector('input, textarea');
+
+            if (inputElement) {
+                inputElement.value = 'Invalid ' + (inputElement.tagName === 'INPUT' ? 'URL' : 'Email');
+                inputElement.style.color = '#dc3545';
+                inputElement.style.borderColor = '#dc3545';
+
+                // Reset styling after 3 seconds
+                setTimeout(() => {
+                    inputElement.style.color = '';
+                    inputElement.style.borderColor = '';
+                }, 3000);
+            }
+        }
+
+        function analyzeExample(content, type) {
+            // Switch to the appropriate tab
+            const tabBtn = document.querySelector(`[data-tab="${type}"]`);
+            if (tabBtn) {
+                tabBtn.click();
+            }
+
+            // Set the content
+            const inputElement = document.getElementById(type === 'url' ? 'urlInput' : 'emailInput');
+            inputElement.value = content;
+
+            // Submit the form
+            document.getElementById(type + 'Form').dispatchEvent(new Event('submit'));
+        }
+
+        // Clear "Invalid" text when user starts typing
+        document.getElementById('urlInput').addEventListener('input', function () {
+            if (this.value === 'Invalid URL') {
+                this.value = '';
+                this.style.color = '';
+                this.style.borderColor = '';
+            }
+        });
+
+        document.getElementById('emailInput').addEventListener('input', function () {
+            if (this.value === 'Invalid Email') {
+                this.value = '';
+                this.style.color = '';
+                this.style.borderColor = '';
+            }
+        });
+    </script>
+</body>
+
+</html>

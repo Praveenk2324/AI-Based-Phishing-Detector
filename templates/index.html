@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phishing Detector</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
 </head>
 
 <body>
@@ -99,9 +99,9 @@
             <div class="example-section">
                 <h4><i class="fas fa-envelope"></i> Email Examples:</h4>
                 <div class="example-item phishing"
-                    onclick="analyzeExample('Subject: Urgent Action Required\n\nDear User,\n\nYour account has been suspended due to suspicious activity. Please click the link below to verify your account immediately.\n\nClick here: http://verify-account.com\n\nBest regards,\nSecurity Team', 'email')">
+                    onclick="analyzeExample('Subject: FREE MONEY!!! 000 000 000\n\nFREE FREE FREE!!!!\nYou have won $10000000 money!\n\nClick here to receive your credit and money order!\nBusiness email list for sale.\nInternet offer! order now!\n\nMake money! credit! free!', 'email')">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <span>Urgent Account Verification (Phishing)</span>
+                    <span>Free Money Offer (Phishing)</span>
                 </div>
                 <div class="example-item phishing"
                     onclick="analyzeExample('Subject: Refinance Today\n\nLowest rates in history! Get approved instantly. No credit check required. Click here to claim your offer now!\n\nApply: http://fast-loans-now.com', 'email')">
@@ -236,16 +236,25 @@
                 return;
             }
 
-            // 2. Phishing (Backend has already applied the <75% override logic, so we trust is_phishing)
-            if (data.is_phishing) {
+            // 2. Possible Phishing (Email only, Confidence < 70% - Applies to BOTH Safe and Phishing predictions)
+            // If the model is not confident enough (even if it says Safe), we warn the user.
+            const confidence = data.confidence || 0;
+            if (data.type === 'email' && confidence < 70) {
+                result.className = 'result possible_phishing';
+                resultIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+                resultTitle.textContent = '⚠️ Possible Phishing Detected';
+                resultDetails.textContent = `The detection confidence is low (${confidence}%). Risk Level: Medium`;
+                confidenceFill.style.backgroundColor = '#ff6700';
+            }
+            // 3. Phishing (High Confidence or URL)
+            else if (data.is_phishing) {
                 result.className = 'result phishing';
                 resultIcon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
                 resultTitle.textContent = data.prediction_text || '⚠️ Phishing Detected!';
                 resultDetails.textContent = `This ${contentType} appears to be malicious. Risk Level: ${data.risk_level}`;
                 confidenceFill.style.backgroundColor = '#ff416c'; // Red
             }
-            // 3. Safe
-            // 3. Safe
+            // 4. Safe (High Confidence)
             else {
                 result.className = 'result safe';
                 resultIcon.innerHTML = '<i class="fas fa-check-circle"></i>';
