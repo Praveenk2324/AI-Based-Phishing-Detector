@@ -38,11 +38,16 @@ def analyze_email_content(email_text):
     is_phishing = bool(prediction == 1)
     confidence = float(max(probability) * 100)
     
+    if is_phishing:
+        risk_level = 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
+    else:
+        risk_level = 'Low'
+
     return {
         'is_phishing': is_phishing,
         'confidence': round(confidence, 2),
         'prediction_text': 'Phishing' if is_phishing else 'Legitimate',
-        'risk_level': 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
+        'risk_level': risk_level
     }
 
 @app.route('/')
