@@ -1,6 +1,6 @@
-
-==================== app.py ====================
-
+='='='='='='='='='='='='='='='='='='='='=
+FILE: app.py
+='='='='='='='='='='='='='='='='='='='='=
 from flask import Flask, render_template, request, jsonify
 import numpy as np
 import joblib
@@ -41,11 +41,16 @@ def analyze_email_content(email_text):
     is_phishing = bool(prediction == 1)
     confidence = float(max(probability) * 100)
     
+    if is_phishing:
+        risk_level = 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
+    else:
+        risk_level = 'Low'
+
     return {
         'is_phishing': is_phishing,
         'confidence': round(confidence, 2),
         'prediction_text': 'Phishing' if is_phishing else 'Legitimate',
-        'risk_level': 'High' if confidence > 80 else 'Medium' if confidence > 60 else 'Low'
+        'risk_level': risk_level
     }
 
 @app.route('/')
@@ -158,49 +163,10 @@ def predict():
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 
-==================== utils.py ====================
 
-from urllib.parse import urlparse
-
-# Moved extract_features_from_url to legacy_v1/legacy_utils.py
-# Moved is_domain_active to legacy_v1/legacy_utils.py
-
-def get_whitelisted_domains():
-    """
-    Returns a set of popular legitimate domains to strictly prevent false positives.
-    """
-    return {
-        'google.com', 'www.google.com', 'youtube.com', 'www.youtube.com',
-        'facebook.com', 'www.facebook.com', 'amazon.com', 'www.amazon.com',
-        'wikipedia.org', 'www.wikipedia.org', 'instagram.com', 'www.instagram.com',
-        'twitter.com', 'www.twitter.com', 'linkedin.com', 'www.linkedin.com',
-        'reddit.com', 'www.reddit.com', 'netflix.com', 'www.netflix.com',
-        'microsoft.com', 'www.microsoft.com', 'apple.com', 'www.apple.com',
-        'yahoo.com', 'www.yahoo.com', 'bing.com', 'www.bing.com',
-        'github.com', 'www.github.com', 'stackoverflow.com', 'gmail.com'
-    }
-
-def is_whitelisted(url):
-    try:
-        parsed = urlparse(url)
-        hostname = parsed.netloc
-        if not hostname:
-             path = parsed.path
-             if '/' in path:
-                 hostname = path.split('/')[0]
-             else:
-                 hostname = path
-        
-        # Remove port
-        if ':' in hostname:
-            hostname = hostname.split(':')[0]
-            
-        return hostname.lower() in get_whitelisted_domains()
-    except:
-        return False
-
-==================== email_features.py ====================
-
+='='='='='='='='='='='='='='='='='='='='=
+FILE: email_features.py
+='='='='='='='='='='='='='='='='='='='='=
 import re
 import numpy as np
 
@@ -289,82 +255,10 @@ def extract_spambase_features(text):
         
     return np.array([features])
 
-==================== train_url_model.py ====================
 
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
-import joblib
-import os
-
-def train_url_model():
-    print("Loading dataset...")
-    # Using 'error_bad_lines=False' or 'on_bad_lines=skip' depending on pandas version if there are issues, 
-    # but for now standard read should work if file is clean.
-    try:
-        df = pd.read_csv("phishing_site_urls.csv")
-    except FileNotFoundError:
-        print("Error: phishing_site_urls.csv not found.")
-        return
-
-    print(f"Dataset Shape: {df.shape}")
-    print(f"Columns: {df.columns.tolist()}")
-
-    # Identify columns (assuming standard format or derived from previous knowledge)
-    # The dataset usually has 'URL' and 'Label'
-    if 'URL' in df.columns and 'Label' in df.columns:
-        X = df['URL']
-        y = df['Label']
-    else:
-        # Fallback or error if columns don't match expectation
-        print("Unexpected column names. Expecting 'URL' and 'Label'.")
-        # Try to find them dynamically
-        url_col = next((col for col in df.columns if 'url' in col.lower()), None)
-        label_col = next((col for col in df.columns if 'label' in col.lower() or 'type' in col.lower()), None)
-        
-        if url_col and label_col:
-            X = df[url_col]
-            y = df[label_col]
-        else:
-            print("Could not identify URL and Label columns.")
-            return
-
-    print("Splitting data...")
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-    print("Vectorizing URLs (Character-level TF-IDF)...")
-    # Using character-level analyzer to capture sub-token patterns
-    # Increased max_features to 100,000 for better granularity
-    vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(3, 5), max_features=100000)
-    X_train_tfidf = vectorizer.fit_transform(X_train)
-    X_test_tfidf = vectorizer.transform(X_test)
-
-    print("Training Logistic Regression Model...")
-    # Logistic Regression is generally very effective for this high-dimensional sparse data
-    # C=10.0 reduces regularization, allowing the model to fit tighter and be more "confident"
-    model = LogisticRegression(C=10.0, max_iter=1000, n_jobs=-1)
-    model.fit(X_train_tfidf, y_train)
-
-    print("Evaluating Model...")
-    y_pred = model.predict(X_test_tfidf)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
-
-    print("Saving model and vectorizer...")
-    joblib.dump(model, 'url_model.joblib')
-    joblib.dump(vectorizer, 'url_vectorizer.joblib')
-    print("Saved 'url_model.joblib' and 'url_vectorizer.joblib' successfully.")
-
-if __name__ == "__main__":
-    train_url_model()
-
-==================== email_trainer.py ====================
-
+='='='='='='='='='='='='='='='='='='='='=
+FILE: email_trainer.py
+='='='='='='='='='='='='='='='='='='='='=
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -467,8 +361,129 @@ if __name__ == "__main__":
     train_email_model()
 
 
-==================== static\style.css ====================
 
+='='='='='='='='='='='='='='='='='='='='=
+FILE: train_url_model.py
+='='='='='='='='='='='='='='='='='='='='=
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+import joblib
+import os
+
+def train_url_model():
+    print("Loading dataset...")
+    # Using 'error_bad_lines=False' or 'on_bad_lines=skip' depending on pandas version if there are issues, 
+    # but for now standard read should work if file is clean.
+    try:
+        df = pd.read_csv("phishing_site_urls.csv")
+    except FileNotFoundError:
+        print("Error: phishing_site_urls.csv not found.")
+        return
+
+    print(f"Dataset Shape: {df.shape}")
+    print(f"Columns: {df.columns.tolist()}")
+
+    # Identify columns (assuming standard format or derived from previous knowledge)
+    # The dataset usually has 'URL' and 'Label'
+    if 'URL' in df.columns and 'Label' in df.columns:
+        X = df['URL']
+        y = df['Label']
+    else:
+        # Fallback or error if columns don't match expectation
+        print("Unexpected column names. Expecting 'URL' and 'Label'.")
+        # Try to find them dynamically
+        url_col = next((col for col in df.columns if 'url' in col.lower()), None)
+        label_col = next((col for col in df.columns if 'label' in col.lower() or 'type' in col.lower()), None)
+        
+        if url_col and label_col:
+            X = df[url_col]
+            y = df[label_col]
+        else:
+            print("Could not identify URL and Label columns.")
+            return
+
+    print("Splitting data...")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    print("Vectorizing URLs (Character-level TF-IDF)...")
+    # Using character-level analyzer to capture sub-token patterns
+    # Increased max_features to 100,000 for better granularity
+    vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(3, 5), max_features=100000)
+    X_train_tfidf = vectorizer.fit_transform(X_train)
+    X_test_tfidf = vectorizer.transform(X_test)
+
+    print("Training Logistic Regression Model...")
+    # Logistic Regression is generally very effective for this high-dimensional sparse data
+    # C=10.0 reduces regularization, allowing the model to fit tighter and be more "confident"
+    model = LogisticRegression(C=10.0, max_iter=1000, n_jobs=-1)
+    model.fit(X_train_tfidf, y_train)
+
+    print("Evaluating Model...")
+    y_pred = model.predict(X_test_tfidf)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy:.4f}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred))
+
+    print("Saving model and vectorizer...")
+    joblib.dump(model, 'url_model.joblib')
+    joblib.dump(vectorizer, 'url_vectorizer.joblib')
+    print("Saved 'url_model.joblib' and 'url_vectorizer.joblib' successfully.")
+
+if __name__ == "__main__":
+    train_url_model()
+
+
+='='='='='='='='='='='='='='='='='='='='=
+FILE: utils.py
+='='='='='='='='='='='='='='='='='='='='=
+from urllib.parse import urlparse
+
+# Moved extract_features_from_url to legacy_v1/legacy_utils.py
+# Moved is_domain_active to legacy_v1/legacy_utils.py
+
+def get_whitelisted_domains():
+    """
+    Returns a set of popular legitimate domains to strictly prevent false positives.
+    """
+    return {
+        'google.com', 'www.google.com', 'youtube.com', 'www.youtube.com',
+        'facebook.com', 'www.facebook.com', 'amazon.com', 'www.amazon.com',
+        'wikipedia.org', 'www.wikipedia.org', 'instagram.com', 'www.instagram.com',
+        'twitter.com', 'www.twitter.com', 'linkedin.com', 'www.linkedin.com',
+        'reddit.com', 'www.reddit.com', 'netflix.com', 'www.netflix.com',
+        'microsoft.com', 'www.microsoft.com', 'apple.com', 'www.apple.com',
+        'yahoo.com', 'www.yahoo.com', 'bing.com', 'www.bing.com',
+        'github.com', 'www.github.com', 'stackoverflow.com', 'gmail.com'
+    }
+
+def is_whitelisted(url):
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.netloc
+        if not hostname:
+             path = parsed.path
+             if '/' in path:
+                 hostname = path.split('/')[0]
+             else:
+                 hostname = path
+        
+        # Remove port
+        if ':' in hostname:
+            hostname = hostname.split(':')[0]
+            
+        return hostname.lower() in get_whitelisted_domains()
+    except:
+        return False
+
+
+='='='='='='='='='='='='='='='='='='='='=
+FILE: static\style.css
+='='='='='='='='='='='='='='='='='='='='=
         * {
             margin: 0;
             padding: 0;
@@ -826,8 +841,9 @@ if __name__ == "__main__":
             }
         }
 
-==================== templates\index.html ====================
-
+='='='='='='='='='='='='='='='='='='='='=
+FILE: templates\index.html
+='='='='='='='='='='='='='='='='='='='='=
 <!DOCTYPE html>
 <html lang="en">
 
@@ -1156,3 +1172,4 @@ if __name__ == "__main__":
 </body>
 
 </html>
+
