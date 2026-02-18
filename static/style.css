@@ -6,7 +6,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #121111 0%, #458969 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -43,7 +43,7 @@
 
         .icon {
             font-size: 3em;
-            color: #667eea;
+            color: #29985b;
             margin-bottom: 20px;
         }
 
@@ -94,7 +94,7 @@
         }
 
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #b21709a2 0%, #79a24b 100%);
             color: white;
             border: none;
             padding: 15px 30px;
@@ -151,7 +151,7 @@
 
         .tab-btn:hover:not(.active) {
             background: rgba(102, 126, 234, 0.1);
-            color: #667eea;
+            color: #0926a4;
         }
 
         .analysis-form {
