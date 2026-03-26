@@ -34,8 +34,6 @@ def train_email_model():
         print("Cannot proceed without dataset.")
         return
 
-    # Load dataset
-    # The dataset has 57 features + 1 label (last column)
     try:
         data = pd.read_csv('spambase.data', header=None)
         print(f"Loaded dataset with shape: {data.shape}")
@@ -46,7 +44,6 @@ def train_email_model():
     X = data.iloc[:, :-1]
     y = data.iloc[:, -1]
     
-    # Split data
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -71,8 +68,7 @@ def train_email_model():
     
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Spam/Phishing']))
-    
-    # Save model
+
     model_filename = 'email_phishing_model.joblib'
     joblib.dump(rf_classifier, model_filename)
     print(f"Model saved to {model_filename}")
