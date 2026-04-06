@@ -11,6 +11,7 @@ from email_features import extract_spambase_features
 
 app = Flask(__name__)
 
+
 try:
     url_model = joblib.load('url_model.joblib')
     url_vectorizer = joblib.load('url_vectorizer.joblib')

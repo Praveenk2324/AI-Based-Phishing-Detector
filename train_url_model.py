@@ -43,15 +43,19 @@ def train_url_model():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     print("Vectorizing URLs (Character-level TF-IDF)...")
+    
     # Using character-level analyzer to capture sub-token patterns
     # Increased max_features to 100,000 for better granularity
+
     vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(3, 5), max_features=100000)
     X_train_tfidf = vectorizer.fit_transform(X_train)
     X_test_tfidf = vectorizer.transform(X_test)
 
     print("Training Logistic Regression Model...")
+
     # Logistic Regression is generally very effective for this high-dimensional sparse data
     # C=10.0 reduces regularization, allowing the model to fit tighter and be more "confident"
+
     model = LogisticRegression(C=10.0, max_iter=1000, n_jobs=-1)
     model.fit(X_train_tfidf, y_train)
 
